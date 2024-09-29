@@ -8,9 +8,9 @@ public class Publisher<TEvent>(Subject<TEvent> subject) : IPublisher<TEvent>, IE
 
     public Subject<TEvent> GetSubject() => subject;
 
-    public void Publish(TEvent sampleEvent)
+    public void Publish(TEvent tevent)
     {
-        subject.OnNext(sampleEvent);
+        subject.OnNext(tevent);
     }
 
     public bool Equals(Publisher<TEvent>? other)
