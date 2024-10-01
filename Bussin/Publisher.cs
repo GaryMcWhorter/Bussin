@@ -2,20 +2,18 @@ using R3;
 
 namespace Bussin;
 
-public class Publisher<TEvent>(Subject<TEvent> subject) : IPublisher<TEvent>, IEquatable<Publisher<TEvent>>
+public class Publisher<TEvent>(SubjectWrapper<TEvent> wrapper) : IPublisher<TEvent>, IEquatable<Publisher<TEvent>>
 {
-    private readonly Subject<TEvent> subject = subject;
-
-    public Subject<TEvent> GetSubject() => subject;
+    private readonly SubjectWrapper<TEvent> wrapper = wrapper;
 
     public void Publish(TEvent tevent)
     {
-        subject.OnNext(tevent);
+        wrapper.Publish(tevent);
     }
 
     public bool Equals(Publisher<TEvent>? other)
     {
-        return other != null && subject == other.GetSubject();
+        return other != null && wrapper == other.wrapper;
     }
 
     public override bool Equals(object? obj)
@@ -25,6 +23,6 @@ public class Publisher<TEvent>(Subject<TEvent> subject) : IPublisher<TEvent>, IE
 
     public override int GetHashCode()
     {
-        return subject.GetHashCode();
+        return wrapper.GetHashCode();
     }
 }

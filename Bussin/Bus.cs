@@ -5,24 +5,24 @@ namespace Bussin;
 
 public class Bus : IBus
 {
-    private readonly ConcurrentDictionary<Type, object> subjects = new();
+    private readonly ConcurrentDictionary<Type, SubjectWrapper> subjects = new();
     private bool disposed = false;
 
     public Observable<TEvent> GetEvent<TEvent>()
     {
-        return (Observable<TEvent>)subjects.GetOrAdd(typeof(TEvent), _ => new Subject<TEvent>());
+        return ((SubjectWrapper<TEvent>)subjects.GetOrAdd(typeof(TEvent), _ => new SubjectWrapper<TEvent>())).GetSubject();
     }
 
     public void Publish<TEvent>(TEvent tevent)
     {
-        var subject = (Subject<TEvent>)subjects.GetOrAdd(typeof(TEvent), _ => new Subject<TEvent>());
-        subject.OnNext(tevent);
+        var wrapper = (SubjectWrapper<TEvent>)subjects.GetOrAdd(typeof(TEvent), _ => new SubjectWrapper<TEvent>());
+        wrapper.Publish(tevent);
     }
 
     public IPublisher<TEvent> GetPublisher<TEvent>()
     {
-        var subject = (Subject<TEvent>)subjects.GetOrAdd(typeof(TEvent), _ => new Subject<TEvent>());
-        return new Publisher<TEvent>(subject);
+        var wrapper = (SubjectWrapper<TEvent>)subjects.GetOrAdd(typeof(TEvent), _ => new SubjectWrapper<TEvent>());
+        return new Publisher<TEvent>(wrapper);
     }
 
     public void Dispose()
@@ -39,7 +39,7 @@ public class Bus : IBus
         {
             foreach (var subject in subjects.Values)
             {
-                (subject as IDisposable)?.Dispose();
+                subject.Dispose();
             }
             subjects.Clear();
         }

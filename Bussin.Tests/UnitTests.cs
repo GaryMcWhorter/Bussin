@@ -1,6 +1,7 @@
 using Shouldly;
 using R3;
 using System.Collections.Concurrent;
+using System.Reflection;
 
 namespace Bussin.Tests;
 
@@ -326,6 +327,127 @@ public class BusTests
 
         await Task.WhenAll(tasks);
     }
+
+    [Fact]
+    public async Task SpinLock_PublishMultipleEvents_EnsuresThreadSafety()
+    {
+        var bus = new Bus();
+        var testEvent = new TestEvent { Message = "SpinLock Test" };
+        var receivedEvents = new ConcurrentBag<string>();
+        var tcs = new TaskCompletionSource<bool>();
+
+        using var _ = bus.GetEvent<TestEvent>().Subscribe(e =>
+        {
+            receivedEvents.Add(e.Message);
+            if (receivedEvents.Count == 50) tcs.SetResult(true);
+        });
+
+        var tasks = Enumerable.Range(0, 50)
+            .Select(_ => Task.Run(() => bus.Publish(testEvent)))
+            .ToArray();
+
+        await Task.WhenAll(tasks);
+
+        await tcs.Task;
+
+        receivedEvents.Count.ShouldBe(50);
+        foreach (var message in receivedEvents)
+        {
+            message.ShouldBe(testEvent.Message);
+        }
+    }
+
+    [Fact]
+    public async Task SpinLock_MultiplePublishers_ThreadSafeWithSameEvent()
+    {
+        var bus = new Bus();
+        var testEvent = new TestEvent { Message = "Publisher SpinLock Test" };
+        var receivedEvents = new ConcurrentBag<string>();
+        var tcs = new TaskCompletionSource<bool>();
+
+        using var _ = bus.GetEvent<TestEvent>().Subscribe(e =>
+        {
+            receivedEvents.Add(e.Message);
+            if (receivedEvents.Count == 50) tcs.SetResult(true);
+        });
+
+        var publisher = bus.GetPublisher<TestEvent>();
+
+        var tasks = Enumerable.Range(0, 50)
+            .Select(_ => Task.Run(() => publisher.Publish(testEvent)))
+            .ToArray();
+
+        await Task.WhenAll(tasks);
+
+        await tcs.Task;
+
+        receivedEvents.Count.ShouldBe(50);
+        foreach (var message in receivedEvents)
+        {
+            message.ShouldBe(testEvent.Message);
+        }
+    }
+
+    [Fact]
+    public async Task SpinLock_MultipleTypes_PublishersThreadSafety()
+    {
+        var bus = new Bus();
+        var testEvent = new TestEvent { Message = "SpinLock Test" };
+        var anotherTestEvent = new AnotherTestEvent { Value = 42 };
+        var receivedEvents = new ConcurrentBag<string>();
+        var tcs = new TaskCompletionSource<bool>();
+
+        using var _ = bus.GetEvent<TestEvent>().Subscribe(e =>
+        {
+            receivedEvents.Add(e.Message);
+        });
+
+        using var _2 = bus.GetEvent<AnotherTestEvent>().Subscribe(e =>
+        {
+            receivedEvents.Add(e.Value.ToString());
+            if (receivedEvents.Count == 50) tcs.SetResult(true);
+        });
+
+        var testEventTasks = Enumerable.Range(0, 25)
+            .Select(_ => Task.Run(() => bus.Publish(testEvent)))
+            .ToArray();
+
+        var anotherTestEventTasks = Enumerable.Range(0, 25)
+            .Select(_ => Task.Run(() => bus.Publish(anotherTestEvent)))
+            .ToArray();
+
+        await Task.WhenAll(testEventTasks.Concat(anotherTestEventTasks));
+
+        await tcs.Task;
+
+        receivedEvents.Count.ShouldBe(50);
+        receivedEvents.ShouldContain(testEvent.Message);
+        receivedEvents.ShouldContain(anotherTestEvent.Value.ToString());
+    }
+
+    [Fact]
+    public void Publisher_SameEventTypeUsesSameSubjectWrapper()
+    {
+        var bus = new Bus();
+
+        var publisher1 = bus.GetPublisher<TestEvent>();
+        var publisher2 = bus.GetPublisher<TestEvent>();
+
+        // Publishers should be different instances
+        publisher1.ShouldNotBeSameAs(publisher2);
+
+        // But they should be equal (because they use the same wrapper)
+        publisher1.ShouldBeEquivalentTo(publisher2);
+
+        // Let's also verify that the underlying SubjectWrapper is the same
+        var wrapperField = typeof(Publisher<TestEvent>).GetField("wrapper", BindingFlags.NonPublic | BindingFlags.Instance);
+        var wrapper1 = wrapperField?.GetValue(publisher1);
+        var wrapper2 = wrapperField?.GetValue(publisher2);
+
+        // Assert.Same(wrapper1, wrapper2);
+        wrapper1.ShouldBeSameAs(wrapper2);
+    }
+
 
     private class TestEvent
     {
